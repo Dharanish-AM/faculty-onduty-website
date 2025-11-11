@@ -109,7 +109,7 @@ const FacultyForm = () => {
             >
               Submit Another Request
             </Button>
-            <Link to="/">
+            <Link to="/faculy-form">
               <Button variant="outline" className="w-full">
                 Back to Home
               </Button>
@@ -124,12 +124,6 @@ const FacultyForm = () => {
     <div className="min-h-screen bg-background py-8 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <Link to="/">
-            <Button variant="ghost" size="sm" className="mb-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Home
-            </Button>
-          </Link>
           <div className="bg-card p-6 rounded-2xl shadow-sm">
             <h1 className="text-3xl font-bold text-center mb-2 text-foreground">
               Faculty OD Form
