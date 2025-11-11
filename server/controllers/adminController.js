@@ -7,14 +7,12 @@ const signupAdmin = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    
     if (!name || !email || !password) {
       return res
         .status(400)
         .json({ success: false, message: "All fields are required" });
     }
 
-    
     const existing = await Admin.findOne({ email });
     if (existing) {
       return res.status(400).json({
@@ -23,10 +21,8 @@ const signupAdmin = async (req, res) => {
       });
     }
 
-    
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    
     const newAdmin = await Admin.create({
       name,
       email,
@@ -54,7 +50,6 @@ const loginAdmin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    
     if (!email || !password) {
       return res
         .status(400)
@@ -68,7 +63,6 @@ const loginAdmin = async (req, res) => {
         .json({ success: false, message: "Invalid credentials" });
     }
 
-    
     const isMatch = await bcrypt.compare(password, admin.password);
     if (!isMatch) {
       return res
@@ -76,7 +70,6 @@ const loginAdmin = async (req, res) => {
         .json({ success: false, message: "Invalid credentials" });
     }
 
-    
     const token = jwt.sign(
       { id: admin._id, email: admin.email },
       process.env.JWT_SECRET,
