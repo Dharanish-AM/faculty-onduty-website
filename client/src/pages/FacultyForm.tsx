@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -31,65 +31,61 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import axios from "axios";
 
-const formSchema = z.object({
-  fullName: z.string().min(2, "Name must be at least 2 characters").max(100),
-  rollNo: z.string().min(2, "Roll No / Employee ID is required").max(50),
-  email: z.string().email("Invalid email address"),
-  department: z.string().min(2, "Department is required"),
-  eventType: z.string().min(1, "Event type is required"),
-  eventTitle: z.string().min(3, "Event title must be at least 3 characters").max(200),
-  eventDescription: z.string().min(10, "Description must be at least 10 characters").max(1000),
-  fromDate: z.date({
-    required_error: "From date is required",
-  }),
-  toDate: z.date({
-    required_error: "To date is required",
-  }),
-}).refine((data) => data.toDate >= data.fromDate, {
-  message: "To date must be equal to or after from date",
-  path: ["toDate"],
-});
+const formSchema = z
+  .object({
+    name: z.string().min(2, "Name must be at least 2 characters").max(100),
+    email: z.string().email("Invalid email address"),
+    eventType: z.string().min(1, "Event type is required"),
+    eventTitle: z
+      .string()
+      .min(3, "Event title must be at least 3 characters")
+      .max(200),
+    eventDescription: z.string().optional(),
+    venue: z.string().min(2, "Venue is required").max(200),
+    fromDate: z.date({ required_error: "From date is required" }),
+    toDate: z.date({ required_error: "To date is required" }),
+  })
+  .refine((data) => data.toDate >= data.fromDate, {
+    message: "To date must be equal to or after from date",
+    path: ["toDate"],
+  });
 
 type FormValues = z.infer<typeof formSchema>;
 
 const FacultyForm = () => {
-  const navigate = useNavigate();
   const [submitted, setSubmitted] = useState(false);
-
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      fullName: "",
-      rollNo: "",
+      name: "",
       email: "",
-      department: "",
       eventType: "",
       eventTitle: "",
       eventDescription: "",
+      venue: "",
     },
   });
 
-  const onSubmit = (data: FormValues) => {
-    // Get existing submissions from localStorage
-    const existingSubmissions = JSON.parse(localStorage.getItem("odSubmissions") || "[]");
-    
-    // Add new submission with timestamp
-    const newSubmission = {
-      ...data,
-      fromDate: format(data.fromDate, "yyyy-MM-dd"),
-      toDate: format(data.toDate, "yyyy-MM-dd"),
-      submittedOn: new Date().toISOString(),
-    };
-    
-    existingSubmissions.push(newSubmission);
-    localStorage.setItem("odSubmissions", JSON.stringify(existingSubmissions));
-    
-    setSubmitted(true);
-    toast.success("Your OD request has been submitted successfully!");
-    
-    // Scroll to top to show success message
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const onSubmit = async (data: FormValues) => {
+    try {
+      const payload = {
+        ...data,
+        fromDate: format(data.fromDate, "yyyy-MM-dd"),
+        toDate: format(data.toDate, "yyyy-MM-dd"),
+      };
+
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/faculty/submit`,
+        payload
+      );
+      toast.success("Your OD request has been submitted successfully!");
+      setSubmitted(true);
+    } catch (error) {
+      console.error("❌ Error submitting OD form:", error);
+      toast.error("Failed to submit your request. Please try again.");
+    }
   };
 
   if (submitted) {
@@ -104,10 +100,13 @@ const FacultyForm = () => {
             Your OD request has been submitted successfully.
           </p>
           <div className="space-y-3">
-            <Button onClick={() => {
-              setSubmitted(false);
-              form.reset();
-            }} className="w-full">
+            <Button
+              onClick={() => {
+                setSubmitted(false);
+                form.reset();
+              }}
+              className="w-full"
+            >
               Submit Another Request
             </Button>
             <Link to="/">
@@ -124,7 +123,6 @@ const FacultyForm = () => {
   return (
     <div className="min-h-screen bg-background py-8 px-4">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
         <div className="mb-6">
           <Link to="/">
             <Button variant="ghost" size="sm" className="mb-4">
@@ -142,13 +140,12 @@ const FacultyForm = () => {
           </div>
         </div>
 
-        {/* Form */}
         <div className="bg-card p-6 md:p-8 rounded-2xl shadow-sm">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
                 control={form.control}
-                name="fullName"
+                name="name"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Full Name *</FormLabel>
@@ -162,26 +159,16 @@ const FacultyForm = () => {
 
               <FormField
                 control={form.control}
-                name="rollNo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Roll No / Employee ID *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., 21CS001 or EMP123" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name="email"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Email *</FormLabel>
                     <FormControl>
-                      <Input type="email" placeholder="example@college.edu" {...field} />
+                      <Input
+                        type="email"
+                        placeholder="example@sece.ac.in"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -190,12 +177,12 @@ const FacultyForm = () => {
 
               <FormField
                 control={form.control}
-                name="department"
+                name="venue"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Department *</FormLabel>
+                    <FormLabel>Venue *</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter your department" {...field} />
+                      <Input placeholder="Enter the venue" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -208,7 +195,10 @@ const FacultyForm = () => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Event Type *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select event type" />
@@ -235,7 +225,10 @@ const FacultyForm = () => {
                   <FormItem>
                     <FormLabel>Event Title *</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., AI Conference 2025" {...field} />
+                      <Input
+                        placeholder="e.g., AI Conference 2025"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
