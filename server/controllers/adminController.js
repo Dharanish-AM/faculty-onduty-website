@@ -115,4 +115,54 @@ const getAllSubmissions = async (req, res) => {
   }
 };
 
-module.exports = { signupAdmin, loginAdmin, getAllSubmissions };
+const editSubmission = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedData = req.body;
+
+    const updatedSubmission = await FacultyOD.findByIdAndUpdate(id, updatedData, { new: true });
+
+    if (!updatedSubmission) {
+      return res.status(404).json({ success: false, message: "Submission not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Submission updated successfully",
+      data: updatedSubmission,
+    });
+  } catch (error) {
+    console.error("❌ Error updating submission:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update submission",
+      error: error.message,
+    });
+  }
+};
+
+const deleteSubmission = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const deletedSubmission = await FacultyOD.findByIdAndDelete(id);
+
+    if (!deletedSubmission) {
+      return res.status(404).json({ success: false, message: "Submission not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Submission deleted successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error deleting submission:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete submission",
+      error: error.message,
+    });
+  }
+};
+
+module.exports = { signupAdmin, loginAdmin, getAllSubmissions, editSubmission, deleteSubmission };

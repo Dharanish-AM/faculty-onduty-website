@@ -1,8 +1,25 @@
 import { useState, useMemo, useEffect } from "react";
+import { z } from "zod";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Download, Search, FileSpreadsheet, Users, Calendar, TrendingUp } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  Search,
+  FileSpreadsheet,
+  Users,
+  Calendar,
+  TrendingUp,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Calendar as CalendarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -17,6 +34,7 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 interface ODSubmission {
+  _id: string;
   name: string;
   email: string;
   eventType: string;
@@ -36,7 +54,9 @@ const AdminDashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/admin/submissions`);
+        const res = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/admin/submissions`
+        );
         setSubmissions(res.data.data || []);
       } catch (err) {
         console.error("❌ Failed to load data", err);
@@ -66,7 +86,9 @@ const AdminDashboard = () => {
     const currentYear = new Date().getFullYear();
     const thisMonthCount = submissions.filter((sub) => {
       const date = new Date(sub.submittedOn);
-      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+      return (
+        date.getMonth() === currentMonth && date.getFullYear() === currentYear
+      );
     }).length;
 
     const venues = new Set(submissions.map((sub) => sub.venue));
@@ -85,25 +107,90 @@ const AdminDashboard = () => {
       return;
     }
 
-    const worksheet = XLSX.utils.json_to_sheet(
-      filteredSubmissions.map((sub) => ({
-        Name: sub.name,
-        Email: sub.email,
-        "Event Type": sub.eventType,
-        "Event Title": sub.eventTitle,
-        "Event Description": sub.eventDescription,
-        Venue: sub.venue,
-        "From Date": sub.fromDate,
-        "To Date": sub.toDate,
-        "Submitted On": new Date(sub.submittedOn).toLocaleString(),
-      }))
-    );
+    // Prepare worksheet data
+    const data = filteredSubmissions.map((sub) => ({
+      Name: sub.name,
+      Email: sub.email,
+      "Event Type": sub.eventType,
+      "Event Title": sub.eventTitle,
+      "Event Description": sub.eventDescription,
+      Venue: sub.venue,
+      "From Date": new Date(sub.fromDate).toLocaleDateString(),
+      "To Date": new Date(sub.toDate).toLocaleDateString(),
+      "Submitted On": new Date(sub.submittedOn).toLocaleString(),
+    }));
 
+    // Create worksheet and workbook
+    const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "OD Submissions");
-    const fileName = `OD_Submissions_${new Date().toISOString().split("T")[0]}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
-    toast.success("Data exported successfully!");
+
+    // 💅 Formatting
+    const range = XLSX.utils.decode_range(worksheet["!ref"]!);
+
+    // Bold header row & adjust alignment
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: C });
+      if (!worksheet[cellAddress]) continue;
+      worksheet[cellAddress].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "4F81BD" } }, // blue background
+        alignment: { horizontal: "center", vertical: "center" },
+      };
+    }
+
+    // Column width auto-adjust
+    const colWidths = Object.keys(data[0]).map((key) => ({
+      wch: Math.max(key.length + 5, 20),
+    }));
+    worksheet["!cols"] = colWidths;
+
+    // Borders and cell alignment
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!worksheet[cellAddress]) continue;
+        worksheet[cellAddress].s = {
+          ...worksheet[cellAddress].s,
+          alignment: { vertical: "center", wrapText: true },
+          border: {
+            top: { style: "thin", color: { rgb: "CCCCCC" } },
+            bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+            left: { style: "thin", color: { rgb: "CCCCCC" } },
+            right: { style: "thin", color: { rgb: "CCCCCC" } },
+          },
+        };
+      }
+    }
+
+    // Save file
+    const fileName = `OD_Submissions_${
+      new Date().toISOString().split("T")[0]
+    }.xlsx`;
+
+    XLSX.writeFile(workbook, fileName, { bookType: "xlsx", compression: true });
+    toast.success("✨ Excel exported with beautiful formatting!");
+  };
+
+  // Handle delete
+  const handleDelete = async (submission) => {
+    const confirmDelete = confirm(
+      `Are you sure you want to delete "${submission.eventTitle}"?`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      await axios.delete(
+        `${import.meta.env.VITE_API_URL}/api/admin/delete-submission/${
+          submission._id
+        }`
+      );
+      toast.success("Submission deleted successfully!");
+      setSubmissions((prev) => prev.filter((s) => s._id !== submission._id));
+    } catch (error) {
+      console.error("❌ Delete failed:", error);
+      toast.error("Failed to delete submission.");
+    }
   };
 
   return (
@@ -112,14 +199,25 @@ const AdminDashboard = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <Link to="/">
-                <Button variant="ghost" size="sm" className="mb-2">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Home
-                </Button>
-              </Link>
-              <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
-              <p className="text-sm text-muted-foreground">Faculty OD Submissions Overview</p>
+              <h1 className="text-2xl font-bold text-foreground">
+                Admin Dashboard
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Faculty OD Submissions Overview
+              </p>
+            </div>
+            <div className="ml-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  localStorage.removeItem("adminToken");
+                  localStorage.removeItem("adminEmail");
+                  window.location.href = "/admin-auth";
+                }}
+              >
+                Logout
+              </Button>
             </div>
           </div>
         </div>
@@ -130,12 +228,18 @@ const AdminDashboard = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardHeader className="flex justify-between items-center pb-2">
-              <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Total Requests
+              </CardTitle>
               <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-primary">{analytics.total}</div>
-              <p className="text-xs text-muted-foreground mt-1">All-time submissions</p>
+              <div className="text-2xl font-bold text-primary">
+                {analytics.total}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                All-time submissions
+              </p>
             </CardContent>
           </Card>
 
@@ -145,8 +249,12 @@ const AdminDashboard = () => {
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-primary">{analytics.thisMonth}</div>
-              <p className="text-xs text-muted-foreground mt-1">Current month</p>
+              <div className="text-2xl font-bold text-primary">
+                {analytics.thisMonth}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Current month
+              </p>
             </CardContent>
           </Card>
 
@@ -156,19 +264,29 @@ const AdminDashboard = () => {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-primary">{analytics.venues}</div>
-              <p className="text-xs text-muted-foreground mt-1">Distinct venues</p>
+              <div className="text-2xl font-bold text-primary">
+                {analytics.venues}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Distinct venues
+              </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex justify-between items-center pb-2">
-              <CardTitle className="text-sm font-medium">Filtered Results</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Filtered Results
+              </CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-primary">{filteredSubmissions.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">Visible entries</p>
+              <div className="text-2xl font-bold text-primary">
+                {filteredSubmissions.length}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Visible entries
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -201,20 +319,42 @@ const AdminDashboard = () => {
             <Table>
               <TableHeader>
                 <TableRow className="bg-primary hover:bg-primary">
-                  <TableHead className="text-primary-foreground font-semibold">Name</TableHead>
-                  <TableHead className="text-primary-foreground font-semibold">Email</TableHead>
-                  <TableHead className="text-primary-foreground font-semibold">Event Type</TableHead>
-                  <TableHead className="text-primary-foreground font-semibold">Event Title</TableHead>
-                  <TableHead className="text-primary-foreground font-semibold">Venue</TableHead>
-                  <TableHead className="text-primary-foreground font-semibold">From</TableHead>
-                  <TableHead className="text-primary-foreground font-semibold">To</TableHead>
-                  <TableHead className="text-primary-foreground font-semibold">Submitted</TableHead>
+                  <TableHead className="text-primary-foreground font-semibold">
+                    Name
+                  </TableHead>
+                  <TableHead className="text-primary-foreground font-semibold">
+                    Email
+                  </TableHead>
+                  <TableHead className="text-primary-foreground font-semibold">
+                    Event Type
+                  </TableHead>
+                  <TableHead className="text-primary-foreground font-semibold">
+                    Event Title
+                  </TableHead>
+                  <TableHead className="text-primary-foreground font-semibold">
+                    Venue
+                  </TableHead>
+                  <TableHead className="text-primary-foreground font-semibold">
+                    From
+                  </TableHead>
+                  <TableHead className="text-primary-foreground font-semibold">
+                    To
+                  </TableHead>
+                  <TableHead className="text-primary-foreground font-semibold">
+                    Submitted
+                  </TableHead>
+                  <TableHead className="text-primary-foreground font-semibold">
+                    Actions
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredSubmissions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell
+                      colSpan={9}
+                      className="text-center py-8 text-muted-foreground"
+                    >
                       {submissions.length === 0
                         ? "No submissions yet."
                         : "No results found. Try another search."}
@@ -228,10 +368,25 @@ const AdminDashboard = () => {
                       <TableCell>{sub.eventType}</TableCell>
                       <TableCell>{sub.eventTitle}</TableCell>
                       <TableCell>{sub.venue}</TableCell>
-                      <TableCell>{new Date(sub.fromDate).toLocaleDateString()}</TableCell>
-                      <TableCell>{new Date(sub.toDate).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {new Date(sub.fromDate).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        {new Date(sub.toDate).toLocaleDateString()}
+                      </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {new Date(sub.submittedOn).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(sub)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
